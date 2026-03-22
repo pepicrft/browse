@@ -47,11 +47,12 @@ jobs:
 
           current_version=$(mix browse.version current)
           latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          published_version=$(curl -fsSL "https://hex.pm/api/packages/browse" | jq -r '.latest_version // empty')
 
           if [ -n "$latest_tag" ]; then
-            git cliff --context --unreleased > release-context.json
+            git cliff --config .github/cliff-release.toml --context --unreleased > release-context.json
           else
-            git cliff --context > release-context.json
+            git cliff --config .github/cliff-release.toml --context > release-context.json
           fi
 
           releaseable_count=$(jq 'if length == 0 then 0 else .[0].commits | length end' release-context.json)
@@ -73,6 +74,10 @@ jobs:
             next_version=$(mix browse.version bump "$latest_tag" "$bump_type")
             git cliff --tag "$next_version" -o CHANGELOG.next.md
             git cliff --config .github/cliff-release.toml --tag "$next_version" --unreleased --strip all -o RELEASE_NOTES.md
+          elif [ -n "$published_version" ]; then
+            next_version=$(mix browse.version bump "$published_version" "$bump_type")
+            git cliff --tag "$next_version" -o CHANGELOG.next.md
+            git cliff --config .github/cliff-release.toml --tag "$next_version" --strip all -o RELEASE_NOTES.md
           else
             next_version="$current_version"
             git cliff --tag "$next_version" -o CHANGELOG.next.md
@@ -81,6 +86,7 @@ jobs:
 
           echo "should_release=true" >> "$GITHUB_OUTPUT"
           echo "current_version=$current_version" >> "$GITHUB_OUTPUT"
+          echo "published_version=$published_version" >> "$GITHUB_OUTPUT"
           echo "next_version=$next_version" >> "$GITHUB_OUTPUT"
           echo "bump_type=$bump_type" >> "$GITHUB_OUTPUT"
 
@@ -110,7 +116,14 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add mix.exs CHANGELOG.md
-          git commit -m "[Release] Browse ${{ steps.plan.outputs.next_version }}"
+
+          if git diff --cached --quiet; then
+            release_commit=$(git rev-parse HEAD)
+          else
+            git commit -m "[Release] Browse ${{ steps.plan.outputs.next_version }}"
+            release_commit=$(git rev-parse HEAD)
+          fi
+
           git tag -a "${{ steps.plan.outputs.next_version }}" -m "${{ steps.plan.outputs.next_version }}"
 
           mix hex.publish package --yes
@@ -118,7 +131,7 @@ jobs:
           git push origin HEAD:main
           git push origin "${{ steps.plan.outputs.next_version }}"
 
-          echo "release_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "release_commit=$release_commit" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub release
         if: steps.plan.outputs.should_release == 'true'
