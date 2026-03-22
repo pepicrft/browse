@@ -1,75 +1,76 @@
 defmodule BrowseTest do
   use ExUnit.Case, async: true
 
-  defmodule FakeAdapter do
-    @behaviour Browse.Adapter
+  defmodule FakeImplementation do
+    @behaviour Browse.Browser
+    @behaviour Browse.Pool
 
-    @impl Browse.Adapter
+    @impl Browse.Pool
     def child_spec(opts) do
       %{id: Keyword.fetch!(opts, :name), start: {Task, :start_link, [fn -> :ok end]}}
     end
 
-    @impl Browse.Adapter
+    @impl Browse.Pool
     def start_link(opts) do
       send(self(), {:start_link, opts})
       Task.start_link(fn -> :ok end)
     end
 
-    @impl Browse.Adapter
+    @impl Browse.Pool
     def checkout(pool, fun, opts) do
       send(self(), {:checkout, pool, opts})
       fun.({:browser, pool})
     end
 
-    @impl Browse.Adapter
+    @impl Browse.Browser
     def navigate(browser, url, opts) do
       send(self(), {:navigate, browser, url, opts})
       :ok
     end
 
-    @impl Browse.Adapter
+    @impl Browse.Browser
     def current_url(browser) do
       send(self(), {:current_url, browser})
       {:ok, "https://example.com"}
     end
 
-    @impl Browse.Adapter
+    @impl Browse.Browser
     def content(browser) do
       send(self(), {:content, browser})
       {:ok, "<html></html>"}
     end
 
-    @impl Browse.Adapter
+    @impl Browse.Browser
     def evaluate(browser, script, opts) do
       send(self(), {:evaluate, browser, script, opts})
       {:ok, %{value: 42}}
     end
 
-    @impl Browse.Adapter
+    @impl Browse.Browser
     def capture_screenshot(browser, opts) do
       send(self(), {:capture_screenshot, browser, opts})
       {:ok, <<1, 2, 3>>}
     end
 
-    @impl Browse.Adapter
+    @impl Browse.Browser
     def print_to_pdf(browser, opts) do
       send(self(), {:print_to_pdf, browser, opts})
       {:ok, <<4, 5, 6>>}
     end
 
-    @impl Browse.Adapter
+    @impl Browse.Browser
     def click(browser, locator, opts) do
       send(self(), {:click, browser, locator, opts})
       :ok
     end
 
-    @impl Browse.Adapter
+    @impl Browse.Browser
     def fill(browser, locator, value, opts) do
       send(self(), {:fill, browser, locator, value, opts})
       :ok
     end
 
-    @impl Browse.Adapter
+    @impl Browse.Browser
     def wait_for(browser, locator, opts) do
       send(self(), {:wait_for, browser, locator, opts})
       :ok
@@ -79,19 +80,21 @@ defmodule BrowseTest do
   test "checkout delegates to the adapter" do
     assert {:ok, "https://example.com"} =
              Browse.checkout(
-               FakeAdapter,
+               FakeImplementation,
                :pool,
                fn browser ->
-                 Browse.current_url(FakeAdapter, browser)
-               end, timeout: 1_000)
+                 Browse.current_url(FakeImplementation, browser)
+               end,
+               timeout: 1_000
+             )
 
     assert_received {:checkout, :pool, [timeout: 1_000]}
     assert_received {:current_url, {:browser, :pool}}
   end
 
   test "pool lifecycle helpers delegate to the adapter" do
-    assert %{id: :pool} = Browse.child_spec(FakeAdapter, name: :pool)
-    assert {:ok, pid} = Browse.start_link(FakeAdapter, name: :pool, size: 2)
+    assert %{id: :pool} = Browse.child_spec(FakeImplementation, name: :pool)
+    assert {:ok, pid} = Browse.start_link(FakeImplementation, name: :pool, size: 2)
     assert is_pid(pid)
     assert_received {:start_link, [name: :pool, size: 2]}
   end
@@ -99,14 +102,14 @@ defmodule BrowseTest do
   test "navigation and interaction helpers delegate to the adapter" do
     browser = {:browser, :pool}
 
-    assert :ok = Browse.navigate(FakeAdapter, browser, "https://example.com", wait: true)
-    assert {:ok, "<html></html>"} = Browse.content(FakeAdapter, browser)
-    assert {:ok, %{value: 42}} = Browse.evaluate(FakeAdapter, browser, "1 + 1", await: true)
-    assert {:ok, <<1, 2, 3>>} = Browse.capture_screenshot(FakeAdapter, browser, format: "jpeg")
-    assert {:ok, <<4, 5, 6>>} = Browse.print_to_pdf(FakeAdapter, browser, scale: 2)
-    assert :ok = Browse.click(FakeAdapter, browser, {:css, "button"}, timeout: 500)
-    assert :ok = Browse.fill(FakeAdapter, browser, {:css, "input"}, "value", clear: true)
-    assert :ok = Browse.wait_for(FakeAdapter, browser, {:text, "Loaded"}, visible: true)
+    assert :ok = Browse.navigate(FakeImplementation, browser, "https://example.com", wait: true)
+    assert {:ok, "<html></html>"} = Browse.content(FakeImplementation, browser)
+    assert {:ok, %{value: 42}} = Browse.evaluate(FakeImplementation, browser, "1 + 1", await: true)
+    assert {:ok, <<1, 2, 3>>} = Browse.capture_screenshot(FakeImplementation, browser, format: "jpeg")
+    assert {:ok, <<4, 5, 6>>} = Browse.print_to_pdf(FakeImplementation, browser, scale: 2)
+    assert :ok = Browse.click(FakeImplementation, browser, {:css, "button"}, timeout: 500)
+    assert :ok = Browse.fill(FakeImplementation, browser, {:css, "input"}, "value", clear: true)
+    assert :ok = Browse.wait_for(FakeImplementation, browser, {:text, "Loaded"}, visible: true)
 
     assert_received {:navigate, ^browser, "https://example.com", [wait: true]}
     assert_received {:content, ^browser}

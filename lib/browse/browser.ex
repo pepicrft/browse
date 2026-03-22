@@ -1,22 +1,17 @@
-defmodule Browse.Adapter do
+defmodule Browse.Browser do
   @moduledoc """
-  Shared browser automation contract implemented by concrete engines.
+  Shared browser capability contract implemented by concrete engines.
 
-  Adapters expose browser capabilities without leaking implementation details
-  such as CDP, WebDriver BiDi, or engine-specific transport handles.
+  Implementations expose browser operations without leaking transport details
+  such as CDP, WebDriver BiDi, or engine-specific RPC handles.
   """
 
-  @type pool :: term()
   @type browser :: term()
   @type locator :: term()
   @type script :: String.t()
   @type url :: String.t()
-  @type option_list :: keyword()
   @type result(value) :: {:ok, value} | {:error, term()}
 
-  @callback child_spec(keyword()) :: Supervisor.child_spec()
-  @callback start_link(keyword()) :: GenServer.on_start()
-  @callback checkout(pool(), (browser() -> {term(), :ok | :remove}), keyword()) :: term()
   @callback navigate(browser(), url(), keyword()) :: :ok | {:error, term()}
   @callback current_url(browser()) :: result(url())
   @callback content(browser()) :: result(String.t())
