@@ -8,11 +8,13 @@ defmodule Browse do
 
   ## Example
 
-      config :browse, default_pool: MyApp.ChromePool
+      config :browse,
+        default_pool: MyApp.ChromePool,
+        pools: [
+          MyApp.ChromePool: [implementation: MyApp.Chrome, pool_size: 4]
+        ]
 
-      children = [
-        Browse.child_spec(MyApp.Chrome, name: MyApp.ChromePool, pool_size: 4)
-      ]
+      children = Browse.children()
 
       Browse.checkout(fn browser ->
         :ok = Browse.navigate(browser, "https://example.com")
@@ -21,6 +23,7 @@ defmodule Browse do
   """
 
   alias Browse.Browser
+  alias Browse.Pool
 
   @type locator :: Browser.locator()
   @opaque browser :: %__MODULE__{implementation: module(), state: term()}
@@ -28,99 +31,28 @@ defmodule Browse do
   @enforce_keys [:implementation, :state]
   defstruct [:implementation, :state]
 
-  defmodule Pool do
-    @moduledoc false
-    @behaviour NimblePool
-
-    alias Browse
-
-    @impl NimblePool
-    def init_pool(opts) do
-      {implementation, opts} = Keyword.pop!(opts, :implementation)
-      {:ok, %{implementation: implementation, browser_opts: opts}}
-    end
-
-    @impl NimblePool
-    def init_worker(%{implementation: implementation, browser_opts: browser_opts} = pool_state) do
-      case implementation.init(browser_opts) do
-        {:ok, state} ->
-          {:ok, %Browse{implementation: implementation, state: state}, pool_state}
-
-        {:error, reason} ->
-          raise "failed to initialize browser: #{inspect(reason)}"
-      end
-    end
-
-    @impl NimblePool
-    def handle_checkout(:checkout, _from, browser, pool_state) do
-      {:ok, browser, browser, pool_state}
-    end
-
-    @impl NimblePool
-    def handle_checkin(:ok, _from, browser, pool_state) do
-      {:ok, browser, pool_state}
-    end
-
-    def handle_checkin(:remove, _from, _browser, pool_state) do
-      {:remove, :closed, pool_state}
-    end
-
-    @impl NimblePool
-    def terminate_worker(reason, %Browse{implementation: implementation, state: state}, pool_state) do
-      :ok = implementation.terminate(reason, state)
-      {:ok, pool_state}
-    end
+  @spec children() :: [Supervisor.child_spec()]
+  def children do
+    configured_pools()
+    |> Keyword.keys()
+    |> Enum.map(&child_spec/1)
   end
 
-  @spec child_spec(module(), keyword()) :: Supervisor.child_spec()
-  def child_spec(implementation, opts) do
-    name = Keyword.fetch!(opts, :name)
+  @spec child_spec(NimblePool.pool(), keyword()) :: Supervisor.child_spec()
+  def child_spec(pool, opts \\ []) do
+    pool_opts = pool_opts!(pool, opts)
 
     %{
-      id: name,
-      start: {__MODULE__, :start_link, [implementation, opts]},
+      id: pool,
+      start: {__MODULE__, :start_link, [pool, pool_opts]},
       type: :worker
     }
   end
 
-  @spec start_link(module(), keyword()) :: GenServer.on_start()
-  def start_link(implementation, opts) do
-    {pool_size, opts} = Keyword.pop(opts, :pool_size, 1)
-    {name, opts} = Keyword.pop(opts, :name)
-    browser_opts = maybe_put_name(opts, name)
-
-    pool_opts =
-      [
-        worker: {Pool, Keyword.put(browser_opts, :implementation, implementation)},
-        pool_size: pool_size
-      ]
-      |> maybe_put_name(name)
-
-    NimblePool.start_link(pool_opts)
-  end
-
-  @spec checkout((browser() -> term()), keyword()) :: term()
-  def checkout(fun, opts) when is_function(fun, 1) and is_list(opts) do
-    checkout(default_pool!(), fun, opts)
-  end
-
-  @spec checkout((browser() -> term())) :: term()
-  def checkout(fun) when is_function(fun, 1) do
-    checkout(default_pool!(), fun, [])
-  end
-
-  @spec checkout(NimblePool.pool(), (browser() -> term()), keyword()) :: term()
-  def checkout(pool, fun, opts \\ []) do
-    timeout = Keyword.get(opts, :timeout, 30_000)
-
-    NimblePool.checkout!(
-      pool,
-      :checkout,
-      fn _from, browser ->
-        normalize_checkout_result(fun.(browser))
-      end,
-      timeout
-    )
+  @spec start_link(NimblePool.pool(), keyword()) :: GenServer.on_start()
+  def start_link(pool, opts \\ []) do
+    pool_opts!(pool, opts)
+    |> do_start_link(pool)
   end
 
   @spec navigate(browser(), String.t(), keyword()) :: :ok | {:error, term()}
@@ -168,9 +100,77 @@ defmodule Browse do
     implementation.wait_for(state, locator, opts)
   end
 
+  @spec checkout((browser() -> term()), keyword()) :: term()
+  def checkout(fun, opts) when is_function(fun, 1) and is_list(opts) do
+    checkout(default_pool!(), fun, opts)
+  end
+
+  @spec checkout((browser() -> term())) :: term()
+  def checkout(fun) when is_function(fun, 1) do
+    checkout(default_pool!(), fun, [])
+  end
+
+  @spec checkout(NimblePool.pool(), (browser() -> term()), keyword()) :: term()
+  def checkout(pool, fun, opts \\ []) do
+    timeout = Keyword.get(opts, :timeout, 30_000)
+
+    NimblePool.checkout!(
+      pool,
+      :checkout,
+      fn _from, browser ->
+        normalize_checkout_result(fun.(browser))
+      end,
+      timeout
+    )
+  end
+
   @spec default_pool!() :: NimblePool.pool()
   def default_pool! do
     Application.fetch_env!(:browse, :default_pool)
+  end
+
+  defp do_start_link(opts, pool) do
+    {pool_size, opts} = Keyword.pop(opts, :pool_size, 1)
+    {implementation, opts} = Keyword.pop!(opts, :implementation)
+    browser_opts = maybe_put_name(opts, pool)
+
+    pool_opts =
+      [
+        worker: {Pool, Keyword.put(browser_opts, :implementation, implementation)},
+        pool_size: pool_size
+      ]
+      |> maybe_put_name(pool)
+
+    NimblePool.start_link(pool_opts)
+  end
+
+  defp pool_opts!(pool, opts) do
+    configured_opts =
+      configured_pools()
+      |> Keyword.get(pool, [])
+
+    merged_opts = Keyword.merge(configured_opts, opts)
+
+    if Keyword.has_key?(merged_opts, :implementation) do
+      merged_opts
+    else
+      raise ArgumentError, """
+      missing browser implementation for pool #{inspect(pool)}
+
+      Configure it with:
+
+          config :browse,
+            pools: [
+              #{inspect(pool)}: [implementation: MyApp.Chrome]
+            ]
+
+      or pass `implementation: ...` when starting the pool.
+      """
+    end
+  end
+
+  defp configured_pools do
+    Application.get_env(:browse, :pools, [])
   end
 
   defp normalize_checkout_result({result, status}) when status in [:ok, :remove] do

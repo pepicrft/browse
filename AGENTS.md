@@ -18,6 +18,7 @@ The package should not absorb backend-specific protocol details such as CDP conc
 - `Browse.Browser` defines browser lifecycle and browser capability callbacks.
 - `Browse` owns startup, checkout, and worker removal using package-provided infrastructure.
 - `Browse` supports both explicit named pools and a configured default pool via `config :browse, default_pool: ...`.
+- Browser implementations are configured per pool under `config :browse, pools: [...]`.
 - The browser handle is intentionally opaque and wraps implementation state internally.
 
 When evolving the API, prefer capability-oriented names like `navigate`, `content`, `evaluate`, and `capture_screenshot` over transport-oriented names.

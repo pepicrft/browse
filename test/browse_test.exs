@@ -3,12 +3,23 @@ defmodule BrowseTest do
 
   setup do
     original_default_pool = Application.get_env(:browse, :default_pool)
+    original_pools = Application.get_env(:browse, :pools)
+
+    Application.put_env(:browse, :pools,
+      pool: [implementation: __MODULE__.FakeImplementation, pool_size: 1, test_pid: self()]
+    )
 
     on_exit(fn ->
       if original_default_pool == nil do
         Application.delete_env(:browse, :default_pool)
       else
         Application.put_env(:browse, :default_pool, original_default_pool)
+      end
+
+      if original_pools == nil do
+        Application.delete_env(:browse, :pools)
+      else
+        Application.put_env(:browse, :pools, original_pools)
       end
     end)
 
@@ -86,19 +97,21 @@ defmodule BrowseTest do
   end
 
   test "Browse owns pool lifecycle" do
-    assert %{id: :pool} = Browse.child_spec(FakeImplementation, name: :pool, pool_size: 1)
-
-    assert {:ok, pid} =
-             Browse.start_link(FakeImplementation, name: :pool, pool_size: 1, test_pid: self())
+    assert %{id: :pool} = Browse.child_spec(:pool)
+    assert {:ok, pid} = Browse.start_link(:pool)
 
     assert is_pid(pid)
     assert_received {:init, opts}
     assert Keyword.fetch!(opts, :name) == :pool
   end
 
+  test "children builds child specs from configured pools" do
+    assert [%{id: :pool, start: {Browse, :start_link, [:pool, _opts]}}] = Browse.children()
+  end
+
   test "checkout uses the configured default pool" do
     Application.put_env(:browse, :default_pool, :pool)
-    {:ok, _pid} = Browse.start_link(FakeImplementation, name: :pool, pool_size: 1, test_pid: self())
+    {:ok, _pid} = Browse.start_link(:pool)
 
     assert {:ok, "https://example.com"} =
              Browse.checkout(fn browser ->
@@ -109,7 +122,7 @@ defmodule BrowseTest do
   end
 
   test "checkout yields an opaque browser handle" do
-    {:ok, _pid} = Browse.start_link(FakeImplementation, name: :pool, pool_size: 1, test_pid: self())
+    {:ok, _pid} = Browse.start_link(:pool)
 
     assert {:ok, "https://example.com"} =
              Browse.checkout(:pool, fn browser ->
@@ -120,7 +133,7 @@ defmodule BrowseTest do
   end
 
   test "browser capability helpers dispatch through the browser handle" do
-    {:ok, _pid} = Browse.start_link(FakeImplementation, name: :pool, pool_size: 1, test_pid: self())
+    {:ok, _pid} = Browse.start_link(:pool)
 
     assert :ok =
              Browse.checkout(:pool, fn browser ->

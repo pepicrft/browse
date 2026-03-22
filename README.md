@@ -34,24 +34,27 @@ This lets packages like `Chrona` and a future Servo implementation expose the sa
 
 ## Example
 
-Configure a default pool:
+Configure your pools and the default pool:
 
 ```elixir
-config :browse, default_pool: MyApp.ChromePool
+config :browse,
+  default_pool: MyApp.ChromePool,
+  pools: [
+    MyApp.ChromePool: [implementation: MyApp.Chrome, pool_size: 4],
+    MyApp.SecondaryChromePool: [implementation: MyApp.Chrome, pool_size: 2]
+  ]
 ```
 
-Start the pool under your application supervisor:
+Start the configured pools under your application supervisor:
 
 ```elixir
-children = [
-  Browse.child_spec(MyApp.Chrome, name: MyApp.ChromePool, pool_size: 4)
-]
+children = Browse.children()
 ```
 
-Or start a pool directly:
+Or start one configured pool directly:
 
 ```elixir
-{:ok, _pid} = Browse.start_link(MyApp.Chrome, name: MyApp.ChromePool, pool_size: 4)
+{:ok, _pid} = Browse.start_link(MyApp.ChromePool)
 ```
 
 Then use the pool through the unified API:
@@ -71,11 +74,21 @@ Browse.checkout(MyApp.SecondaryChromePool, fn browser ->
 end)
 ```
 
+You can also override config at startup time if needed:
+
+```elixir
+{:ok, _pid} =
+  Browse.start_link(MyApp.ChromePool,
+    implementation: MyApp.Chrome,
+    pool_size: 1
+  )
+```
+
 ## Behavior
 
 Implementations are expected to satisfy `Browse.Browser`.
 
-`Browse` owns pool startup, checkout, and worker lifecycle. Implementations only provide browser initialization, termination, and browser operations such as navigation and screenshots.
+`Browse` owns pool startup, checkout, and worker lifecycle. Implementations are configured per pool and only provide browser initialization, termination, and browser operations such as navigation and screenshots.
 
 Pooling is not a behavior. It is a concrete concern of this package, implemented by `Browse` itself. Backends plug into that runtime by implementing `Browse.Browser`.
 
