@@ -23,7 +23,7 @@ defmodule Browse.MixProject do
 
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger, :telemetry]
     ]
   end
 
@@ -32,6 +32,7 @@ defmodule Browse.MixProject do
 
   defp deps do
     [
+      {:telemetry, "~> 1.2"},
       {:nimble_pool, "~> 1.1"},
       {:quokka, "~> 2.12", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.35", only: :dev, runtime: false},

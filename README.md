@@ -94,6 +94,37 @@ Pooling is not a behavior. It is a concrete concern of this package, implemented
 
 The browser handle passed around by the behavior is intentionally opaque. Each implementation is free to represent it however it needs.
 
+## Telemetry
+
+`Browse` emits telemetry for the lifecycle it owns:
+
+- `[:browse, :pool, :start, :start | :stop | :exception]`
+- `[:browse, :checkout, :start | :stop | :exception]`
+- `[:browse, :worker, :init, :start | :stop | :exception]`
+- `[:browse, :worker, :remove]`
+- `[:browse, :worker, :terminate]`
+
+Attach handlers with `:telemetry.attach_many/4`:
+
+```elixir
+events = [
+  [:browse, :pool, :start, :stop],
+  [:browse, :checkout, :stop],
+  [:browse, :worker, :terminate]
+]
+
+:telemetry.attach_many(
+  "browse-metrics",
+  events,
+  fn event, measurements, metadata, _config ->
+    IO.inspect({event, measurements, metadata}, label: "browse telemetry")
+  end,
+  nil
+)
+```
+
+See `Browse.Telemetry` for the full event contract, measurements, and metadata.
+
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.

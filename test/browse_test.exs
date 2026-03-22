@@ -1,15 +1,39 @@
 defmodule BrowseTest do
   use ExUnit.Case, async: false
 
+  def handle_telemetry(event, measurements, metadata, pid) do
+    send(pid, {:telemetry, event, measurements, metadata})
+  end
+
   setup do
     original_default_pool = Application.get_env(:browse, :default_pool)
     original_pools = Application.get_env(:browse, :pools)
+    telemetry_handler_id = "browse-test-#{System.unique_integer([:positive])}"
 
     Application.put_env(:browse, :pools,
       pool: [implementation: __MODULE__.FakeImplementation, pool_size: 1, test_pid: self()]
     )
 
+    :ok =
+      :telemetry.attach_many(
+        telemetry_handler_id,
+        [
+          [:browse, :pool, :start, :start],
+          [:browse, :pool, :start, :stop],
+          [:browse, :checkout, :start],
+          [:browse, :checkout, :stop],
+          [:browse, :worker, :init, :start],
+          [:browse, :worker, :init, :stop],
+          [:browse, :worker, :remove],
+          [:browse, :worker, :terminate]
+        ],
+        &__MODULE__.handle_telemetry/4,
+        self()
+      )
+
     on_exit(fn ->
+      :telemetry.detach(telemetry_handler_id)
+
       if original_default_pool == nil do
         Application.delete_env(:browse, :default_pool)
       else
@@ -156,5 +180,68 @@ defmodule BrowseTest do
     assert_received {:click, %{pool: :pool}, {:css, "button"}, [timeout: 500]}
     assert_received {:fill, %{pool: :pool}, {:css, "input"}, "value", [clear: true]}
     assert_received {:wait_for, %{pool: :pool}, {:text, "Loaded"}, [visible: true]}
+  end
+
+  test "emits telemetry for pool startup, checkout, and worker lifecycle" do
+    {:ok, _pid} = Browse.start_link(:pool)
+
+    assert_received {:telemetry, [:browse, :pool, :start, :start], %{system_time: system_time}, %{pool: :pool}}
+
+    assert is_integer(system_time)
+
+    assert_received {:telemetry, [:browse, :worker, :init, :start], %{system_time: worker_system_time},
+                     %{implementation: __MODULE__.FakeImplementation, pool: :pool}}
+
+    assert is_integer(worker_system_time)
+
+    assert_received {:telemetry, [:browse, :worker, :init, :stop], %{duration: worker_duration},
+                     %{implementation: __MODULE__.FakeImplementation, pool: :pool}}
+
+    assert is_integer(worker_duration)
+
+    assert_received {:telemetry, [:browse, :pool, :start, :stop], %{duration: pool_duration},
+                     %{
+                       implementation: __MODULE__.FakeImplementation,
+                       pid: pid,
+                       pool: :pool,
+                       pool_size: 1,
+                       result: :ok
+                     }}
+
+    assert is_pid(pid)
+    assert is_integer(pool_duration)
+
+    assert :done =
+             Browse.checkout(:pool, fn _browser ->
+               {:done, :remove}
+             end)
+
+    assert_received {:telemetry, [:browse, :checkout, :start], %{system_time: checkout_system_time},
+                     %{pool: :pool, timeout: 30_000}}
+
+    assert is_integer(checkout_system_time)
+
+    assert_received {:telemetry, [:browse, :checkout, :stop], %{duration: checkout_duration},
+                     %{pool: :pool, timeout: 30_000}}
+
+    assert is_integer(checkout_duration)
+
+    assert_receive {:telemetry, [:browse, :worker, :remove], %{system_time: remove_system_time},
+                    %{
+                      implementation: __MODULE__.FakeImplementation,
+                      pool: :pool,
+                      reason: :checkout_remove
+                    }}
+
+    assert is_integer(remove_system_time)
+
+    assert_receive {:telemetry, [:browse, :worker, :terminate], %{system_time: terminate_system_time},
+                    %{
+                      implementation: __MODULE__.FakeImplementation,
+                      pool: :pool,
+                      reason: :closed
+                    }}
+
+    assert is_integer(terminate_system_time)
   end
 end
