@@ -1,13 +1,13 @@
-defmodule Mix.Tasks.Version do
-  @shortdoc "Manage the project version in mix.exs"
+defmodule Mix.Tasks.Browse.Version do
+  @shortdoc "Manage the Browse project version in mix.exs"
   @moduledoc """
-  Manage the project version in mix.exs.
+  Manage the Browse project version in mix.exs.
 
   ## Usage
 
-      mix version current          # Print the current version
-      mix version bump 1.2.3 minor # Bump the given version (prints 1.3.0)
-      mix version set 2.0.0        # Update @version in mix.exs
+      mix browse.version current          # Print the current version
+      mix browse.version bump 1.2.3 minor # Bump the given version (prints 1.3.0)
+      mix browse.version set 2.0.0        # Update @version in mix.exs
   """
 
   use Mix.Task
@@ -49,7 +49,7 @@ defmodule Mix.Tasks.Version do
   end
 
   def run(_args) do
-    Mix.raise("usage: mix version [current|bump <version> <major|minor|patch>|set <version>]")
+    Mix.raise("usage: mix browse.version [current|bump <version> <major|minor|patch>|set <version>]")
   end
 
   defp mix_exs do
