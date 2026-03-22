@@ -1,25 +1,33 @@
 defmodule BrowseTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
+
+  setup do
+    original_default_pool = Application.get_env(:browse, :default_pool)
+
+    on_exit(fn ->
+      if original_default_pool == nil do
+        Application.delete_env(:browse, :default_pool)
+      else
+        Application.put_env(:browse, :default_pool, original_default_pool)
+      end
+    end)
+
+    :ok
+  end
 
   defmodule FakeImplementation do
     @behaviour Browse.Browser
-    @behaviour Browse.Pool
 
-    @impl Browse.Pool
-    def child_spec(opts) do
-      %{id: Keyword.fetch!(opts, :name), start: {Task, :start_link, [fn -> :ok end]}}
+    @impl Browse.Browser
+    def init(opts) do
+      send(Keyword.fetch!(opts, :test_pid), {:init, opts})
+      {:ok, %{pool: Keyword.fetch!(opts, :name)}}
     end
 
-    @impl Browse.Pool
-    def start_link(opts) do
-      send(self(), {:start_link, opts})
-      Task.start_link(fn -> :ok end)
-    end
-
-    @impl Browse.Pool
-    def checkout(pool, fun, opts) do
-      send(self(), {:checkout, pool, opts})
-      fun.({:browser, pool})
+    @impl Browse.Browser
+    def terminate(reason, state) do
+      send(self(), {:terminate, reason, state})
+      :ok
     end
 
     @impl Browse.Browser
@@ -77,47 +85,63 @@ defmodule BrowseTest do
     end
   end
 
-  test "checkout delegates to the adapter" do
-    assert {:ok, "https://example.com"} =
-             Browse.checkout(
-               FakeImplementation,
-               :pool,
-               fn browser ->
-                 Browse.current_url(FakeImplementation, browser)
-               end,
-               timeout: 1_000
-             )
+  test "Browse owns pool lifecycle" do
+    assert %{id: :pool} = Browse.child_spec(FakeImplementation, name: :pool, pool_size: 1)
 
-    assert_received {:checkout, :pool, [timeout: 1_000]}
-    assert_received {:current_url, {:browser, :pool}}
-  end
+    assert {:ok, pid} =
+             Browse.start_link(FakeImplementation, name: :pool, pool_size: 1, test_pid: self())
 
-  test "pool lifecycle helpers delegate to the adapter" do
-    assert %{id: :pool} = Browse.child_spec(FakeImplementation, name: :pool)
-    assert {:ok, pid} = Browse.start_link(FakeImplementation, name: :pool, size: 2)
     assert is_pid(pid)
-    assert_received {:start_link, [name: :pool, size: 2]}
+    assert_received {:init, opts}
+    assert Keyword.fetch!(opts, :name) == :pool
   end
 
-  test "navigation and interaction helpers delegate to the adapter" do
-    browser = {:browser, :pool}
+  test "checkout uses the configured default pool" do
+    Application.put_env(:browse, :default_pool, :pool)
+    {:ok, _pid} = Browse.start_link(FakeImplementation, name: :pool, pool_size: 1, test_pid: self())
 
-    assert :ok = Browse.navigate(FakeImplementation, browser, "https://example.com", wait: true)
-    assert {:ok, "<html></html>"} = Browse.content(FakeImplementation, browser)
-    assert {:ok, %{value: 42}} = Browse.evaluate(FakeImplementation, browser, "1 + 1", await: true)
-    assert {:ok, <<1, 2, 3>>} = Browse.capture_screenshot(FakeImplementation, browser, format: "jpeg")
-    assert {:ok, <<4, 5, 6>>} = Browse.print_to_pdf(FakeImplementation, browser, scale: 2)
-    assert :ok = Browse.click(FakeImplementation, browser, {:css, "button"}, timeout: 500)
-    assert :ok = Browse.fill(FakeImplementation, browser, {:css, "input"}, "value", clear: true)
-    assert :ok = Browse.wait_for(FakeImplementation, browser, {:text, "Loaded"}, visible: true)
+    assert {:ok, "https://example.com"} =
+             Browse.checkout(fn browser ->
+               Browse.current_url(browser)
+             end)
 
-    assert_received {:navigate, ^browser, "https://example.com", [wait: true]}
-    assert_received {:content, ^browser}
-    assert_received {:evaluate, ^browser, "1 + 1", [await: true]}
-    assert_received {:capture_screenshot, ^browser, [format: "jpeg"]}
-    assert_received {:print_to_pdf, ^browser, [scale: 2]}
-    assert_received {:click, ^browser, {:css, "button"}, [timeout: 500]}
-    assert_received {:fill, ^browser, {:css, "input"}, "value", [clear: true]}
-    assert_received {:wait_for, ^browser, {:text, "Loaded"}, [visible: true]}
+    assert_received {:current_url, %{pool: :pool}}
+  end
+
+  test "checkout yields an opaque browser handle" do
+    {:ok, _pid} = Browse.start_link(FakeImplementation, name: :pool, pool_size: 1, test_pid: self())
+
+    assert {:ok, "https://example.com"} =
+             Browse.checkout(:pool, fn browser ->
+               Browse.current_url(browser)
+             end)
+
+    assert_received {:current_url, %{pool: :pool}}
+  end
+
+  test "browser capability helpers dispatch through the browser handle" do
+    {:ok, _pid} = Browse.start_link(FakeImplementation, name: :pool, pool_size: 1, test_pid: self())
+
+    assert :ok =
+             Browse.checkout(:pool, fn browser ->
+               assert :ok = Browse.navigate(browser, "https://example.com", wait: true)
+               assert {:ok, "<html></html>"} = Browse.content(browser)
+               assert {:ok, %{value: 42}} = Browse.evaluate(browser, "1 + 1", await: true)
+               assert {:ok, <<1, 2, 3>>} = Browse.capture_screenshot(browser, format: "jpeg")
+               assert {:ok, <<4, 5, 6>>} = Browse.print_to_pdf(browser, scale: 2)
+               assert :ok = Browse.click(browser, {:css, "button"}, timeout: 500)
+               assert :ok = Browse.fill(browser, {:css, "input"}, "value", clear: true)
+               assert :ok = Browse.wait_for(browser, {:text, "Loaded"}, visible: true)
+               :ok
+             end)
+
+    assert_received {:navigate, %{pool: :pool}, "https://example.com", [wait: true]}
+    assert_received {:content, %{pool: :pool}}
+    assert_received {:evaluate, %{pool: :pool}, "1 + 1", [await: true]}
+    assert_received {:capture_screenshot, %{pool: :pool}, [format: "jpeg"]}
+    assert_received {:print_to_pdf, %{pool: :pool}, [scale: 2]}
+    assert_received {:click, %{pool: :pool}, {:css, "button"}, [timeout: 500]}
+    assert_received {:fill, %{pool: :pool}, {:css, "input"}, "value", [clear: true]}
+    assert_received {:wait_for, %{pool: :pool}, {:text, "Loaded"}, [visible: true]}
   end
 end

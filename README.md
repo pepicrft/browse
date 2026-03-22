@@ -5,7 +5,7 @@
 [![CI](https://github.com/pepicrft/browse/actions/workflows/browse.yml/badge.svg)](https://github.com/pepicrft/browse/actions/workflows/browse.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Shared browser automation contract for Elixir browser implementations.
+Shared browser automation contract and pool implementation for Elixir browser backends.
 
 `Browse` defines a transport-agnostic contract for browser automation packages such as a Chrome implementation, a Servo implementation, or any future engine backend. The goal is to expose browser capabilities without leaking implementation details such as CDP sessions or engine-specific RPC handles.
 
@@ -23,17 +23,24 @@ end
 
 ## Design
 
-`Browse` is not a browser engine and it does not speak a wire protocol itself, but it does define the shared pool lifecycle and browser capability contract that engine implementations provide.
+`Browse` is not a browser engine and it does not speak a wire protocol itself, but it does provide the shared pool implementation and browser capability contract that engine backends plug into.
 
 It provides:
 
 - `Browse.Browser` as the shared browser capability behavior
-- `Browse.Pool` as the shared pool lifecycle behavior
-- `Browse` as a facade that dispatches to an implementation module
+- `Browse` as the actual pool implementation and facade
 
 This lets packages like `Chrona` and a future Servo implementation expose the same API while keeping CDP or any other backend protocol as an implementation detail.
 
 ## Example
+
+Configure a default pool:
+
+```elixir
+config :browse, default_pool: MyApp.ChromePool
+```
+
+Start the pool under your application supervisor:
 
 ```elixir
 children = [
@@ -50,20 +57,27 @@ Or start a pool directly:
 Then use the pool through the unified API:
 
 ```elixir
-Browse.checkout(MyApp.Chrome, MyApp.ChromePool, fn browser ->
-  :ok = Browse.navigate(MyApp.Chrome, browser, "https://example.com")
-  Browse.capture_screenshot(MyApp.Chrome, browser, format: "jpeg", quality: 90)
+Browse.checkout(fn browser ->
+  :ok = Browse.navigate(browser, "https://example.com")
+  Browse.capture_screenshot(browser, format: "jpeg", quality: 90)
+end)
+```
+
+If you have multiple pools, you can still target one explicitly:
+
+```elixir
+Browse.checkout(MyApp.SecondaryChromePool, fn browser ->
+  Browse.current_url(browser)
 end)
 ```
 
 ## Behavior
 
-Implementations are expected to satisfy two contracts:
+Implementations are expected to satisfy `Browse.Browser`.
 
-- `Browse.Pool` for child specs, startup, and checkout
-- `Browse.Browser` for browser capabilities such as navigation and screenshots
+`Browse` owns pool startup, checkout, and worker lifecycle. Implementations only provide browser initialization, termination, and browser operations such as navigation and screenshots.
 
-This keeps pool management as a `Browse` concern without mixing it into the browser capability behavior itself.
+Pooling is not a behavior. It is a concrete concern of this package, implemented by `Browse` itself. Backends plug into that runtime by implementing `Browse.Browser`.
 
 The browser handle passed around by the behavior is intentionally opaque. Each implementation is free to represent it however it needs.
 
