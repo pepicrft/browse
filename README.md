@@ -21,6 +21,13 @@ def deps do
 end
 ```
 
+## Browser Implementations
+
+`Browse` provides the shared contract and pool implementation. To drive a real browser, use a backend package such as:
+
+- [`browse_servo`](https://github.com/pepicrft/browse_servo)
+- [`browse_chrome`](https://github.com/pepicrft/browse_chrome)
+
 ## Design
 
 `Browse` is not a browser engine and it does not speak a wire protocol itself, but it does provide the shared pool implementation and browser capability contract that engine backends plug into.
