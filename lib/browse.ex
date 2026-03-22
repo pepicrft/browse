@@ -6,6 +6,18 @@ defmodule Browse do
   or a future Servo implementation can use without exposing CDP or other
   backend-specific details to callers.
 
+  ## Telemetry
+
+  `Browse` emits telemetry for the package-owned pool lifecycle:
+
+  - `[:browse, :pool, :start, :start | :stop | :exception]`
+  - `[:browse, :checkout, :start | :stop | :exception]`
+  - `[:browse, :worker, :init, :start | :stop | :exception]`
+  - `[:browse, :worker, :remove]`
+  - `[:browse, :worker, :terminate]`
+
+  See `Browse.Telemetry` for the event contract.
+
   ## Example
 
       config :browse,
@@ -24,6 +36,7 @@ defmodule Browse do
 
   alias Browse.Browser
   alias Browse.Pool
+  alias Browse.Telemetry
 
   @type locator :: Browser.locator()
   @opaque browser :: %__MODULE__{implementation: module(), state: term()}
@@ -114,14 +127,19 @@ defmodule Browse do
   def checkout(pool, fun, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, 30_000)
 
-    NimblePool.checkout!(
-      pool,
-      :checkout,
-      fn _from, browser ->
-        normalize_checkout_result(fun.(browser))
-      end,
-      timeout
-    )
+    Telemetry.span([:browse, :checkout], %{pool: pool, timeout: timeout}, fn ->
+      result =
+        NimblePool.checkout!(
+          pool,
+          :checkout,
+          fn _from, browser ->
+            normalize_checkout_result(fun.(browser))
+          end,
+          timeout
+        )
+
+      {result, %{pool: pool, timeout: timeout}}
+    end)
   end
 
   @spec default_pool!() :: NimblePool.pool()
@@ -141,7 +159,25 @@ defmodule Browse do
       ]
       |> maybe_put_name(pool)
 
-    NimblePool.start_link(pool_opts)
+    Telemetry.span([:browse, :pool, :start], %{pool: pool}, fn ->
+      case NimblePool.start_link(pool_opts) do
+        {:ok, pid} = result ->
+          {result, %{implementation: implementation, pid: pid, pool: pool, pool_size: pool_size, result: :ok}}
+
+        {:error, reason} = result ->
+          {result,
+           %{
+             implementation: implementation,
+             pool: pool,
+             pool_size: pool_size,
+             reason: reason,
+             result: :error
+           }}
+
+        :ignore = result ->
+          {result, %{implementation: implementation, pool: pool, pool_size: pool_size, result: :ignore}}
+      end
+    end)
   end
 
   defp pool_opts!(pool, opts) do
