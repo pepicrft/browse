@@ -5,7 +5,7 @@
 [![CI](https://github.com/pepicrft/browse/actions/workflows/browse.yml/badge.svg)](https://github.com/pepicrft/browse/actions/workflows/browse.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Shared browser automation behavior for Elixir renderer implementations.
+Shared browser automation contract for Elixir browser implementations.
 
 `Browse` defines a transport-agnostic contract for browser automation packages such as a Chrome implementation, a Servo implementation, or any future engine backend. The goal is to expose browser capabilities without leaking implementation details such as CDP sessions or engine-specific RPC handles.
 
@@ -23,7 +23,7 @@ end
 
 ## Design
 
-`Browse` is not a browser engine and it does not speak a wire protocol itself, but it does define the shared pool lifecycle and browser capability contract that engine adapters implement.
+`Browse` is not a browser engine and it does not speak a wire protocol itself, but it does define the shared pool lifecycle and browser capability contract that engine implementations provide.
 
 It provides:
 
@@ -31,20 +31,20 @@ It provides:
 - `Browse.Pool` as the shared pool lifecycle behavior
 - `Browse` as a facade that dispatches to an implementation module
 
-This lets packages like `Chrona` and a future Servo adapter implement the same API while keeping CDP or any other backend protocol as an implementation detail.
+This lets packages like `Chrona` and a future Servo implementation expose the same API while keeping CDP or any other backend protocol as an implementation detail.
 
 ## Example
 
 ```elixir
 children = [
-  Browse.child_spec(MyApp.ChromeAdapter, name: MyApp.ChromePool, pool_size: 4)
+  Browse.child_spec(MyApp.Chrome, name: MyApp.ChromePool, pool_size: 4)
 ]
 ```
 
 Or start a pool directly:
 
 ```elixir
-{:ok, _pid} = Browse.start_link(MyApp.ChromeAdapter, name: MyApp.ChromePool, pool_size: 4)
+{:ok, _pid} = Browse.start_link(MyApp.Chrome, name: MyApp.ChromePool, pool_size: 4)
 ```
 
 Then use the pool through the unified API:
@@ -65,7 +65,7 @@ Implementations are expected to satisfy two contracts:
 
 This keeps pool management as a `Browse` concern without mixing it into the browser capability behavior itself.
 
-The browser handle passed around by the behavior is intentionally opaque. Each adapter is free to represent it however it needs.
+The browser handle passed around by the behavior is intentionally opaque. Each implementation is free to represent it however it needs.
 
 ## License
 

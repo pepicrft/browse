@@ -1,16 +1,16 @@
 defmodule Browse do
   @moduledoc """
-  Shared browser automation facade for renderer implementations.
+  Shared browser automation facade for browser implementations.
 
   `Browse` defines a transport-agnostic API that packages such as `Chrona`
-  or a future Servo adapter can implement without exposing CDP or other
+  or a future Servo implementation can implement without exposing CDP or other
   backend-specific details to callers.
 
   ## Example
 
-      Browse.checkout(MyApp.ChromeAdapter, MyApp.ChromePool, fn browser ->
-        :ok = Browse.navigate(MyApp.ChromeAdapter, browser, "https://example.com")
-        Browse.capture_screenshot(MyApp.ChromeAdapter, browser, format: "jpeg", quality: 90)
+      Browse.checkout(MyApp.Chrome, MyApp.ChromePool, fn browser ->
+        :ok = Browse.navigate(MyApp.Chrome, browser, "https://example.com")
+        Browse.capture_screenshot(MyApp.Chrome, browser, format: "jpeg", quality: 90)
       end)
   """
 
