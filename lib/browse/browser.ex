@@ -23,4 +23,15 @@ defmodule Browse.Browser do
   @callback click(state(), locator(), keyword()) :: :ok | {:error, term()}
   @callback fill(state(), locator(), String.t(), keyword()) :: :ok | {:error, term()}
   @callback wait_for(state(), locator(), keyword()) :: :ok | {:error, term()}
+  @callback go_back(state(), keyword()) :: :ok | {:error, term()}
+  @callback go_forward(state(), keyword()) :: :ok | {:error, term()}
+  @callback reload(state(), keyword()) :: :ok | {:error, term()}
+  @callback title(state()) :: result(String.t())
+  @callback select_option(state(), locator(), String.t(), keyword()) :: :ok | {:error, term()}
+  @callback hover(state(), locator(), keyword()) :: :ok | {:error, term()}
+  @callback get_text(state(), locator(), keyword()) :: result(String.t())
+  @callback get_attribute(state(), locator(), String.t(), keyword()) :: result(String.t() | nil)
+  @callback get_cookies(state(), keyword()) :: result(list(map()))
+  @callback set_cookie(state(), map(), keyword()) :: :ok | {:error, term()}
+  @callback clear_cookies(state(), keyword()) :: :ok | {:error, term()}
 end

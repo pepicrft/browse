@@ -113,6 +113,61 @@ defmodule Browse do
     implementation.wait_for(state, locator, opts)
   end
 
+  @spec go_back(browser(), keyword()) :: :ok | {:error, term()}
+  def go_back(%__MODULE__{implementation: implementation, state: state}, opts \\ []) do
+    implementation.go_back(state, opts)
+  end
+
+  @spec go_forward(browser(), keyword()) :: :ok | {:error, term()}
+  def go_forward(%__MODULE__{implementation: implementation, state: state}, opts \\ []) do
+    implementation.go_forward(state, opts)
+  end
+
+  @spec reload(browser(), keyword()) :: :ok | {:error, term()}
+  def reload(%__MODULE__{implementation: implementation, state: state}, opts \\ []) do
+    implementation.reload(state, opts)
+  end
+
+  @spec title(browser()) :: {:ok, String.t()} | {:error, term()}
+  def title(%__MODULE__{implementation: implementation, state: state}) do
+    implementation.title(state)
+  end
+
+  @spec select_option(browser(), locator(), String.t(), keyword()) :: :ok | {:error, term()}
+  def select_option(%__MODULE__{implementation: implementation, state: state}, locator, value, opts \\ []) do
+    implementation.select_option(state, locator, value, opts)
+  end
+
+  @spec hover(browser(), locator(), keyword()) :: :ok | {:error, term()}
+  def hover(%__MODULE__{implementation: implementation, state: state}, locator, opts \\ []) do
+    implementation.hover(state, locator, opts)
+  end
+
+  @spec get_text(browser(), locator(), keyword()) :: {:ok, String.t()} | {:error, term()}
+  def get_text(%__MODULE__{implementation: implementation, state: state}, locator, opts \\ []) do
+    implementation.get_text(state, locator, opts)
+  end
+
+  @spec get_attribute(browser(), locator(), String.t(), keyword()) :: {:ok, String.t() | nil} | {:error, term()}
+  def get_attribute(%__MODULE__{implementation: implementation, state: state}, locator, name, opts \\ []) do
+    implementation.get_attribute(state, locator, name, opts)
+  end
+
+  @spec get_cookies(browser(), keyword()) :: {:ok, list(map())} | {:error, term()}
+  def get_cookies(%__MODULE__{implementation: implementation, state: state}, opts \\ []) do
+    implementation.get_cookies(state, opts)
+  end
+
+  @spec set_cookie(browser(), map(), keyword()) :: :ok | {:error, term()}
+  def set_cookie(%__MODULE__{implementation: implementation, state: state}, cookie, opts \\ []) do
+    implementation.set_cookie(state, cookie, opts)
+  end
+
+  @spec clear_cookies(browser(), keyword()) :: :ok | {:error, term()}
+  def clear_cookies(%__MODULE__{implementation: implementation, state: state}, opts \\ []) do
+    implementation.clear_cookies(state, opts)
+  end
+
   @spec checkout((browser() -> term()), keyword()) :: term()
   def checkout(fun, opts) when is_function(fun, 1) and is_list(opts) do
     checkout(default_pool!(), fun, opts)
