@@ -1,6 +1,12 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.3.0] - 2026-03-24
+
+### Features
+
+- Add new browser API functions for AI agent browsing
+
 ## [0.2.0] - 2026-03-22
 
 ### Changes
