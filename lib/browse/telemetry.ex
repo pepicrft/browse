@@ -2,9 +2,10 @@ defmodule Browse.Telemetry do
   @moduledoc """
   Telemetry events emitted by `Browse`.
 
-  `Browse` emits telemetry for the package-owned pool lifecycle and worker
-  lifecycle. Browser capability callbacks such as `navigate/3` or `evaluate/3`
-  are intentionally left to concrete implementations.
+  `Browse` emits telemetry for the pool lifecycle, worker lifecycle, and
+  individual browser operations. When called inside a `Browse.checkout/3`
+  block, browser operation spans become child spans of the checkout span,
+  giving consumers full request traces.
 
   ## Events
 
@@ -88,11 +89,32 @@ defmodule Browse.Telemetry do
 
   - `:system_time`
 
+  ## Browser operation events
+
+  Each browser operation emits `[:browse, <operation>, :start | :stop | :exception]`
+  events via `:telemetry.span/3`.
+
+  All operations include `:implementation` in metadata. Operations that accept a
+  locator also include `:locator`. `navigate` includes `:url`, and `get_attribute`
+  includes `:attribute`.
+
+  Operations: `navigate`, `current_url`, `content`, `evaluate`,
+  `capture_screenshot`, `print_to_pdf`, `click`, `fill`, `wait_for`, `go_back`,
+  `go_forward`, `reload`, `title`, `select_option`, `hover`, `get_text`,
+  `get_attribute`, `get_cookies`, `set_cookie`, `clear_cookies`.
+
+  Measurements:
+
+  - `:system_time` on `:start`
+  - `:duration` on `:stop` and `:exception`
+
   ## Example
 
       events = [
         [:browse, :pool, :start, :stop],
         [:browse, :checkout, :stop],
+        [:browse, :navigate, :stop],
+        [:browse, :click, :stop],
         [:browse, :worker, :terminate]
       ]
 
