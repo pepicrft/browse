@@ -1,6 +1,12 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.4.0] - 2026-03-25
+
+### Features
+
+- Add telemetry spans to all browser operation functions
+
 ## [0.3.0] - 2026-03-24
 
 ### Features
