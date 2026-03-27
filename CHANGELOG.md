@@ -1,6 +1,12 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.5.0] - 2026-03-27
+
+### Features
+
+- feat: add set_viewport callback and facade function
+
 ## [0.4.0] - 2026-03-25
 
 ### Features
