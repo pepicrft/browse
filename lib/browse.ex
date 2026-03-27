@@ -28,6 +28,7 @@ defmodule Browse do
   - `[:browse, :content, ...]`
   - `[:browse, :evaluate, ...]`
   - `[:browse, :capture_screenshot, ...]`
+  - `[:browse, :set_viewport, ...]` — also includes `:width`, `:height`
   - `[:browse, :print_to_pdf, ...]`
   - `[:browse, :click, ...]` — also includes `:locator`
   - `[:browse, :fill, ...]` — also includes `:locator`
@@ -129,6 +130,18 @@ defmodule Browse do
     Telemetry.span([:browse, :capture_screenshot], %{implementation: implementation}, fn ->
       {implementation.capture_screenshot(state, opts), %{implementation: implementation}}
     end)
+  end
+
+  @spec set_viewport(browser(), pos_integer(), pos_integer(), keyword()) :: :ok | {:error, term()}
+  def set_viewport(%__MODULE__{implementation: implementation, state: state}, width, height, opts \\ []) do
+    Telemetry.span(
+      [:browse, :set_viewport],
+      %{implementation: implementation, width: width, height: height},
+      fn ->
+        {implementation.set_viewport(state, width, height, opts),
+         %{implementation: implementation, width: width, height: height}}
+      end
+    )
   end
 
   @spec print_to_pdf(browser(), keyword()) :: {:ok, binary()} | {:error, term()}

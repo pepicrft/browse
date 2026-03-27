@@ -96,6 +96,12 @@ defmodule BrowseTest do
     end
 
     @impl Browse.Browser
+    def set_viewport(browser, width, height, opts) do
+      send(self(), {:set_viewport, browser, width, height, opts})
+      :ok
+    end
+
+    @impl Browse.Browser
     def print_to_pdf(browser, opts) do
       send(self(), {:print_to_pdf, browser, opts})
       {:ok, <<4, 5, 6>>}
@@ -165,6 +171,7 @@ defmodule BrowseTest do
                assert {:ok, "<html></html>"} = Browse.content(browser)
                assert {:ok, %{value: 42}} = Browse.evaluate(browser, "1 + 1", await: true)
                assert {:ok, <<1, 2, 3>>} = Browse.capture_screenshot(browser, format: "jpeg")
+               assert :ok = Browse.set_viewport(browser, 1280, 720, mobile: false)
                assert {:ok, <<4, 5, 6>>} = Browse.print_to_pdf(browser, scale: 2)
                assert :ok = Browse.click(browser, {:css, "button"}, timeout: 500)
                assert :ok = Browse.fill(browser, {:css, "input"}, "value", clear: true)
@@ -176,6 +183,7 @@ defmodule BrowseTest do
     assert_received {:content, %{pool: :pool}}
     assert_received {:evaluate, %{pool: :pool}, "1 + 1", [await: true]}
     assert_received {:capture_screenshot, %{pool: :pool}, [format: "jpeg"]}
+    assert_received {:set_viewport, %{pool: :pool}, 1280, 720, [mobile: false]}
     assert_received {:print_to_pdf, %{pool: :pool}, [scale: 2]}
     assert_received {:click, %{pool: :pool}, {:css, "button"}, [timeout: 500]}
     assert_received {:fill, %{pool: :pool}, {:css, "input"}, "value", [clear: true]}

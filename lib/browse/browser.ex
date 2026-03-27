@@ -19,6 +19,7 @@ defmodule Browse.Browser do
   @callback content(state()) :: result(String.t())
   @callback evaluate(state(), script(), keyword()) :: result(term())
   @callback capture_screenshot(state(), keyword()) :: result(binary())
+  @callback set_viewport(state(), pos_integer(), pos_integer(), keyword()) :: :ok | {:error, term()}
   @callback print_to_pdf(state(), keyword()) :: result(binary())
   @callback click(state(), locator(), keyword()) :: :ok | {:error, term()}
   @callback fill(state(), locator(), String.t(), keyword()) :: :ok | {:error, term()}
