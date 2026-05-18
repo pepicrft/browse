@@ -2,7 +2,7 @@
 
 [![Hex.pm](https://img.shields.io/hexpm/v/browse.svg)](https://hex.pm/packages/browse)
 [![Hex Docs](https://img.shields.io/badge/hex-docs-blue.svg)](https://hexdocs.pm/browse)
-[![CI](https://github.com/pepicrft/browse/actions/workflows/browse.yml/badge.svg)](https://github.com/pepicrft/browse/actions/workflows/browse.yml)
+[![CI](https://github.com/tuist/browse/actions/workflows/browse.yml/badge.svg)](https://github.com/tuist/browse/actions/workflows/browse.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Shared browser automation contract and pool implementation for Elixir browser backends.
@@ -25,7 +25,7 @@ end
 
 `Browse` provides the shared contract and pool implementation. To drive a real browser, use a backend package such as:
 
-- [`browse_servo`](https://github.com/pepicrft/browse_servo)
+- [`browse_servo`](https://github.com/tuist/browse_servo)
 - [`browse_chrome`](https://github.com/pepicrft/browse_chrome)
 
 ## Design

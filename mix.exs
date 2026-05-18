@@ -2,7 +2,7 @@ defmodule Browse.MixProject do
   use Mix.Project
 
   @version "0.5.0"
-  @source_url "https://github.com/pepicrft/browse"
+  @source_url "https://github.com/tuist/browse"
 
   def project do
     [
