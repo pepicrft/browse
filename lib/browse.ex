@@ -93,15 +93,18 @@ defmodule Browse do
   >
   > Neither mode gives a caller a usable error when the browser cannot launch at
   > all. `c:Browse.Browser.init/1` returning `{:error, reason}` is reported to
-  > NimblePool as a worker removal, which schedules another launch immediately,
-  > so the pool retries in a tight loop. An eager pool does this in the
-  > background from the moment it starts; a lazy pool does it from the first
-  > checkout, and that checkout blocks until its own timeout expires and then
-  > exits with `{:timeout, {NimblePool, :checkout, [pool]}}`.
+  > NimblePool as a worker removal, which schedules another launch, so the pool
+  > retries rather than reporting. Retries back off (50ms, doubling, capped at
+  > 1s) and the counter resets on the first success, so a pool that can never
+  > launch a browser idles instead of spinning, but it never gives up either.
   >
-  > `lazy: true` is therefore not a way to make a missing browser degrade
-  > gracefully. Callers that need to fall back when no browser is available
-  > should bound the checkout with their own timeout and handle that exit.
+  > A checkout that needs a worker the pool cannot create therefore blocks until
+  > its own timeout expires and then exits with
+  > `{:timeout, {NimblePool, :checkout, [pool]}}`. `lazy: true` only changes
+  > when the attempts start, not what the caller sees, so it is not by itself a
+  > way to make a missing browser degrade gracefully. Callers that need to fall
+  > back should pass a `:timeout` they are willing to wait for and handle that
+  > exit.
   """
 
   alias Browse.Browser

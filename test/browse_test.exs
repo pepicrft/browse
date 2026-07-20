@@ -131,6 +131,14 @@ defmodule BrowseTest do
     end
   end
 
+  defp drain_init_attempts(count \\ 0) do
+    receive do
+      {:init, _opts} -> drain_init_attempts(count + 1)
+    after
+      0 -> count
+    end
+  end
+
   test "Browse owns pool lifecycle" do
     assert %{id: :pool} = Browse.child_spec(:pool)
     assert {:ok, pid} = Browse.start_link(:pool)
@@ -227,6 +235,26 @@ defmodule BrowseTest do
       assert Process.alive?(pid)
 
       GenServer.stop(pid)
+    end)
+  end
+
+  test "an eager pool backs off between failed browser launches" do
+    Application.put_env(:browse, :pools,
+      pool: [implementation: __MODULE__.FakeImplementation, pool_size: 1, fail_init: true, test_pid: self()]
+    )
+
+    ExUnit.CaptureLog.capture_log(fn ->
+      {:ok, pid} = Browse.start_link(:pool)
+
+      Process.sleep(500)
+      GenServer.stop(pid)
+
+      # 50ms, doubling and capped at 1s, so a 500ms window fits a handful of
+      # attempts. Without the backoff the pool retries as fast as it can loop,
+      # which measured in the millions over a window this size.
+      attempts = drain_init_attempts()
+      assert attempts > 1
+      assert attempts < 25
     end)
   end
 
