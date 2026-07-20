@@ -61,6 +61,39 @@ defmodule Browse do
         :ok = Browse.navigate(browser, "https://example.com")
         Browse.capture_screenshot(browser, format: "jpeg", quality: 90)
       end)
+
+  ## Pool options
+
+  A pool's configuration takes these options, and passes every other option
+  through to the implementation's `c:Browse.Browser.init/1`:
+
+    * `:implementation` - the `Browse.Browser` module backing the pool (required)
+    * `:pool_size` - number of browsers to keep in the pool (default: `1`)
+    * `:lazy` - when `true`, browsers start on first checkout instead of when
+      the pool starts (default: `false`)
+    * `:worker_idle_timeout` - see `NimblePool`
+    * `:max_idle_pings` - see `NimblePool`
+
+  ### Lazy pools
+
+  By default the pool starts every browser as soon as the pool itself starts, so
+  browsers are warm before the first checkout. On a machine where the browser
+  cannot launch at all, the pool still starts, but it retries the launch for as
+  long as it lives, logging each failure.
+
+  Pass `lazy: true` to defer launching until a browser is actually checked out:
+
+      config :browse,
+        pools: [
+          MyApp.ChromePool: [implementation: MyApp.Chrome, pool_size: 4, lazy: true]
+        ]
+
+  A lazy pool attempts a launch only when a checkout needs one, so a failure
+  surfaces to the caller that triggered it instead of looping in the background,
+  and a browser that becomes available later is picked up on the next checkout.
+  This suits callers that can degrade when the browser is missing and would
+  rather not depend on it being installed. The trade is cold starts: the first
+  checkout to reach each worker pays the launch cost.
   """
 
   alias Browse.Browser
@@ -72,6 +105,12 @@ defmodule Browse do
 
   @enforce_keys [:implementation, :state]
   defstruct [:implementation, :state]
+
+  # Pool options forwarded to NimblePool. Everything else in a pool's
+  # configuration is a browser option handed to the implementation, so these
+  # have to be split out explicitly: left in, they would silently reach
+  # `c:Browse.Browser.init/1` as unknown options and never configure the pool.
+  @nimble_pool_opts [:lazy, :worker_idle_timeout, :max_idle_pings]
 
   @spec children() :: [Supervisor.child_spec()]
   def children do
@@ -291,6 +330,7 @@ defmodule Browse do
   defp do_start_link(opts, pool) do
     {pool_size, opts} = Keyword.pop(opts, :pool_size, 1)
     {implementation, opts} = Keyword.pop!(opts, :implementation)
+    {nimble_pool_opts, opts} = Keyword.split(opts, @nimble_pool_opts)
     browser_opts = maybe_put_name(opts, pool)
 
     pool_opts =
@@ -298,6 +338,7 @@ defmodule Browse do
         worker: {Pool, Keyword.put(browser_opts, :implementation, implementation)},
         pool_size: pool_size
       ]
+      |> Keyword.merge(nimble_pool_opts)
       |> maybe_put_name(pool)
 
     Telemetry.span([:browse, :pool, :start], %{pool: pool}, fn ->
