@@ -56,7 +56,12 @@ defmodule BrowseTest do
     @impl Browse.Browser
     def init(opts) do
       send(Keyword.fetch!(opts, :test_pid), {:init, opts})
-      {:ok, %{pool: Keyword.fetch!(opts, :name)}}
+
+      if Keyword.get(opts, :fail_init, false) do
+        {:error, :cannot_launch}
+      else
+        {:ok, %{pool: Keyword.fetch!(opts, :name)}}
+      end
     end
 
     @impl Browse.Browser
@@ -126,6 +131,14 @@ defmodule BrowseTest do
     end
   end
 
+  defp drain_init_attempts(count \\ 0) do
+    receive do
+      {:init, _opts} -> drain_init_attempts(count + 1)
+    after
+      0 -> count
+    end
+  end
+
   test "Browse owns pool lifecycle" do
     assert %{id: :pool} = Browse.child_spec(:pool)
     assert {:ok, pid} = Browse.start_link(:pool)
@@ -133,6 +146,135 @@ defmodule BrowseTest do
     assert is_pid(pid)
     assert_received {:init, opts}
     assert Keyword.fetch!(opts, :name) == :pool
+  end
+
+  test "starts browsers eagerly by default" do
+    {:ok, pid} = Browse.start_link(:pool)
+
+    assert_received {:init, _opts}
+
+    GenServer.stop(pid)
+  end
+
+  test "lazy defers starting browsers until the first checkout" do
+    Application.put_env(:browse, :pools,
+      pool: [implementation: __MODULE__.FakeImplementation, pool_size: 1, lazy: true, test_pid: self()]
+    )
+
+    {:ok, pid} = Browse.start_link(:pool)
+
+    refute_received {:init, _opts}
+
+    assert {:ok, "https://example.com"} =
+             Browse.checkout(:pool, fn browser ->
+               Browse.current_url(browser)
+             end)
+
+    assert_received {:init, _opts}
+
+    GenServer.stop(pid)
+  end
+
+  test "a checkout on a lazy pool whose browser cannot launch times out" do
+    Application.put_env(:browse, :pools,
+      pool: [
+        implementation: __MODULE__.FakeImplementation,
+        pool_size: 1,
+        lazy: true,
+        fail_init: true,
+        test_pid: self()
+      ]
+    )
+
+    ExUnit.CaptureLog.capture_log(fn ->
+      {:ok, pid} = Browse.start_link(:pool)
+
+      # The failure is reported to NimblePool as a worker removal, which
+      # schedules another launch, so the pool retries instead of handing the
+      # caller an error and the checkout only ends on its own timeout.
+      assert catch_exit(Browse.checkout(:pool, fn browser -> browser end, timeout: 50)) ==
+               {:timeout, {NimblePool, :checkout, [:pool]}}
+
+      assert_received {:init, _opts}
+
+      GenServer.stop(pid)
+    end)
+  end
+
+  test "lazy keeps the pool starting when the browser cannot launch" do
+    Application.put_env(:browse, :pools,
+      pool: [
+        implementation: __MODULE__.FakeImplementation,
+        pool_size: 1,
+        lazy: true,
+        fail_init: true,
+        test_pid: self()
+      ]
+    )
+
+    assert {:ok, pid} = Browse.start_link(:pool)
+    assert Process.alive?(pid)
+    refute_received {:init, _opts}
+
+    GenServer.stop(pid)
+  end
+
+  test "an eager pool retries the browser launch in a loop when it fails" do
+    Application.put_env(:browse, :pools,
+      pool: [implementation: __MODULE__.FakeImplementation, pool_size: 1, fail_init: true, test_pid: self()]
+    )
+
+    ExUnit.CaptureLog.capture_log(fn ->
+      {:ok, pid} = Browse.start_link(:pool)
+
+      # NimblePool catches the failure and schedules another attempt, so an
+      # eager pool whose browser cannot launch keeps retrying for as long as it
+      # lives rather than failing to start.
+      assert_receive {:init, _opts}
+      assert_receive {:init, _opts}
+      assert Process.alive?(pid)
+
+      GenServer.stop(pid)
+    end)
+  end
+
+  test "an eager pool backs off between failed browser launches" do
+    Application.put_env(:browse, :pools,
+      pool: [implementation: __MODULE__.FakeImplementation, pool_size: 1, fail_init: true, test_pid: self()]
+    )
+
+    ExUnit.CaptureLog.capture_log(fn ->
+      {:ok, pid} = Browse.start_link(:pool)
+
+      Process.sleep(500)
+      GenServer.stop(pid)
+
+      # 50ms, doubling and capped at 1s, so a 500ms window fits a handful of
+      # attempts. Without the backoff the pool retries as fast as it can loop,
+      # which measured in the millions over a window this size.
+      attempts = drain_init_attempts()
+      assert attempts > 1
+      assert attempts < 25
+    end)
+  end
+
+  test "pool options are not passed to the browser implementation" do
+    Application.put_env(:browse, :pools,
+      pool: [
+        implementation: __MODULE__.FakeImplementation,
+        pool_size: 1,
+        lazy: false,
+        test_pid: self()
+      ]
+    )
+
+    {:ok, pid} = Browse.start_link(:pool)
+
+    assert_received {:init, opts}
+    refute Keyword.has_key?(opts, :lazy)
+    refute Keyword.has_key?(opts, :pool_size)
+
+    GenServer.stop(pid)
   end
 
   test "children builds child specs from configured pools" do
