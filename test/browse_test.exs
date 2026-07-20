@@ -167,6 +167,32 @@ defmodule BrowseTest do
     GenServer.stop(pid)
   end
 
+  test "a checkout on a lazy pool whose browser cannot launch times out" do
+    Application.put_env(:browse, :pools,
+      pool: [
+        implementation: __MODULE__.FakeImplementation,
+        pool_size: 1,
+        lazy: true,
+        fail_init: true,
+        test_pid: self()
+      ]
+    )
+
+    ExUnit.CaptureLog.capture_log(fn ->
+      {:ok, pid} = Browse.start_link(:pool)
+
+      # The failure is reported to NimblePool as a worker removal, which
+      # schedules another launch, so the pool retries instead of handing the
+      # caller an error and the checkout only ends on its own timeout.
+      assert catch_exit(Browse.checkout(:pool, fn browser -> browser end, timeout: 50)) ==
+               {:timeout, {NimblePool, :checkout, [:pool]}}
+
+      assert_received {:init, _opts}
+
+      GenServer.stop(pid)
+    end)
+  end
+
   test "lazy keeps the pool starting when the browser cannot launch" do
     Application.put_env(:browse, :pools,
       pool: [
@@ -210,7 +236,6 @@ defmodule BrowseTest do
         implementation: __MODULE__.FakeImplementation,
         pool_size: 1,
         lazy: false,
-        max_idle_pings: 3,
         test_pid: self()
       ]
     )
@@ -219,7 +244,6 @@ defmodule BrowseTest do
 
     assert_received {:init, opts}
     refute Keyword.has_key?(opts, :lazy)
-    refute Keyword.has_key?(opts, :max_idle_pings)
     refute Keyword.has_key?(opts, :pool_size)
 
     GenServer.stop(pid)

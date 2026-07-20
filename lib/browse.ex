@@ -71,29 +71,37 @@ defmodule Browse do
     * `:pool_size` - number of browsers to keep in the pool (default: `1`)
     * `:lazy` - when `true`, browsers start on first checkout instead of when
       the pool starts (default: `false`)
-    * `:worker_idle_timeout` - see `NimblePool`
-    * `:max_idle_pings` - see `NimblePool`
 
   ### Lazy pools
 
   By default the pool starts every browser as soon as the pool itself starts, so
-  browsers are warm before the first checkout. On a machine where the browser
-  cannot launch at all, the pool still starts, but it retries the launch for as
-  long as it lives, logging each failure.
-
-  Pass `lazy: true` to defer launching until a browser is actually checked out:
+  browsers are warm before the first checkout and a cold start never lands on a
+  caller. Pass `lazy: true` to defer launching until a browser is actually
+  checked out:
 
       config :browse,
         pools: [
           MyApp.ChromePool: [implementation: MyApp.Chrome, pool_size: 4, lazy: true]
         ]
 
-  A lazy pool attempts a launch only when a checkout needs one, so a failure
-  surfaces to the caller that triggered it instead of looping in the background,
-  and a browser that becomes available later is picked up on the next checkout.
-  This suits callers that can degrade when the browser is missing and would
-  rather not depend on it being installed. The trade is cold starts: the first
-  checkout to reach each worker pays the launch cost.
+  A lazy pool is useful when the browser is not needed on every boot, or when a
+  pool sits in a supervision tree that should start whether or not a browser
+  ever gets used. The trade is cold starts: the first checkout to reach each
+  worker pays the launch cost.
+
+  > #### Launch failures are retried, not surfaced {: .warning}
+  >
+  > Neither mode gives a caller a usable error when the browser cannot launch at
+  > all. `c:Browse.Browser.init/1` returning `{:error, reason}` is reported to
+  > NimblePool as a worker removal, which schedules another launch immediately,
+  > so the pool retries in a tight loop. An eager pool does this in the
+  > background from the moment it starts; a lazy pool does it from the first
+  > checkout, and that checkout blocks until its own timeout expires and then
+  > exits with `{:timeout, {NimblePool, :checkout, [pool]}}`.
+  >
+  > `lazy: true` is therefore not a way to make a missing browser degrade
+  > gracefully. Callers that need to fall back when no browser is available
+  > should bound the checkout with their own timeout and handle that exit.
   """
 
   alias Browse.Browser
@@ -110,7 +118,12 @@ defmodule Browse do
   # configuration is a browser option handed to the implementation, so these
   # have to be split out explicitly: left in, they would silently reach
   # `c:Browse.Browser.init/1` as unknown options and never configure the pool.
-  @nimble_pool_opts [:lazy, :worker_idle_timeout, :max_idle_pings]
+  #
+  # NimblePool's `:worker_idle_timeout` and `:max_idle_pings` are deliberately
+  # not forwarded: they only do anything when the worker module exports
+  # `handle_ping/2`, and `Browse.Pool` does not, so accepting them here would
+  # advertise idle-browser reaping that never happens.
+  @nimble_pool_opts [:lazy]
 
   @spec children() :: [Supervisor.child_spec()]
   def children do
